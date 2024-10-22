@@ -1,0 +1,23 @@
+{
+  "name": "dvt",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "https://github.com/AAStarCommunity/dvt.git",
+  "author": "STW",
+  "license": "MIT",
+  "scripts": {
+    "start": "ts-node-dev src/index.ts",
+    "start:prod": "node dist/index.js",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@thehubbleproject/bls": "^0.5.1",
+    "express": "^4.21.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.7.7",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.6.3"
+  }
+}
