@@ -6,7 +6,9 @@
   "author": "STW",
   "license": "MIT",
   "scripts": {
-    "start": "ts-node-dev src/index.ts"
+    "start": "ts-node-dev src/index.ts",
+    "start:prod": "node dist/index.js",
+    "build": "tsc"
   },
   "dependencies": {
     "@thehubbleproject/bls": "^0.5.1",

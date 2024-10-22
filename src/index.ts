@@ -2,7 +2,7 @@ import express from "express";
 import { blsSign } from "./service/signer";
 
 const app = express();
-const port = process.env.PORT || 8080;
+const port = process.env.PORT || 80;
 
 import { aggregator } from "./service/aggregator";
 import { solG1 } from "@thehubbleproject/bls/dist/mcl";
@@ -18,23 +18,35 @@ app.post("/sign", async (req, res) => {
   }
   const s = await blsSign(domain, message);
 
-  const v = aggregator([s.signature]);
-
-  const g1 = mcl.loadG1(
-    "0x2f71e7f05b887dd947424b3fe1885a32c7733a180b4bbf0eb0040a644bdfea262f197beb9a8accb964c90dc387323bf0b9c5631b23f8bcb777e692361e5d331f"
-  );
-  console.log(aggregator([g1]));
-  res.send(JSON.stringify({ sig: s.signature, pubkeys: s.pubkey, v }));
+  res.send(JSON.stringify({ sig: s.signature, pubkeys: s.pubkey }));
 });
 
 app.post("/aggr", async (req, res) => {
-  const g1 = mcl.loadG1(
-    "0x2f71e7f05b887dd947424b3fe1885a32c7733a180b4bbf0eb0040a644bdfea262f197beb9a8accb964c90dc387323bf0b9c5631b23f8bcb777e692361e5d331f"
-  );
-  res.send(JSON.stringify({ sig: aggregator([g1]) }));
+  const { sigs }: { sigs: string[2][] } = req.body;
+  const aggrs: solG1[] = [];
+  for (let i = 0; i < sigs.length; i++) {
+    let x = sigs[i][0];
+    let y = sigs[i][1];
+    if (!x || !y) {
+      res.status(400).send({ error: "Invalid input" });
+      return;
+    }
+    if (!x.startsWith("0x")) {
+      x = "0x" + x;
+    }
+    if (y.startsWith("0x")) {
+      y = y.slice(2);
+    }
+    if (x.length !== 66 || y.length !== 64) {
+      res.status(400).send({ error: "Invalid input" });
+      return;
+    }
+    aggrs.push(mcl.loadG1(x + y));
+  }
+  res.send(JSON.stringify({ sig: aggregator(aggrs) }));
 });
 
 app.listen(port, async () => {
-    await BlsSignerFactory.new();
-    console.log(`Server is running at http://localhost:${port}`);
+  await BlsSignerFactory.new();
+  console.log(`Server is running at http://localhost:${port}`);
 });
