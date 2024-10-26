@@ -7,6 +7,9 @@ import { BlsSignerFactory } from "@thehubbleproject/bls/dist/signer";
 import { formatBytes32String } from "ethers/lib/utils";
 import crypto from "crypto";
 import { hexToUint8Array } from "./service/utils";
+import { verifyAggrSigs } from "./service/chain.util";
+
+const mcl_1 = require("@thehubbleproject/bls/dist/mcl");
 
 const STATUS_CODES_ACCEPTED = 202;
 const STATUS_CODES_NOT_ACCEPTED = 406;
@@ -68,7 +71,7 @@ app.post("/aggr", async (req, res, next) => {
   }
 });
 
-app.post("/aggr/verify", async (req, res, next) => {
+app.post("/aggr/verify/offchain", async (req, res, next) => {
   try {
     const {
       domain,
@@ -76,25 +79,21 @@ app.post("/aggr/verify", async (req, res, next) => {
       pubkeys,
       aggrSig,
     }: {
-      domain: string;
-      messages: string[];
+      domain: string;       // raw domain, e.g. "domain"
+      messages: string[];   // raw message, e.g. ["helloworld", "foobar"]
       pubkeys: string[4][];
       aggrSig: string[2];
     } = req.body;
 
-    const msgs = [];
+    const hexDomain = hexToUint8Array(
+      crypto.createHash("sha256").update(domain).digest("hex")
+    );
+
+    const localTestMsg = [];
     for (const raw of messages) {
       const message = formatBytes32String(raw);
-      msgs.push(message);
+      localTestMsg.push(message);
     }
-
-    const hashedDomain = crypto
-      .createHash("sha256")
-      .update(domain)
-      .digest("hex");
-
-    const signer = factory.getSigner(hexToUint8Array(hashedDomain));
-    console.log({ domain, msgs, pubkeys, aggrSig });
     const g1 = mcl.loadG1(aggrSig[0] + aggrSig[1].slice(2));
     const g2: solG2[] = [];
     for (let i = 0; i < pubkeys.length; i++) {
@@ -104,23 +103,79 @@ app.post("/aggr/verify", async (req, res, next) => {
       const w = pubkeys[i][3].slice(2);
       g2.push(mcl.loadG2(x + y + z + w));
     }
-    res
-      .status(
-        signer.verifyMultiple(g1, g2, msgs)
-          ? STATUS_CODES_ACCEPTED
-          : STATUS_CODES_NOT_ACCEPTED
-      )
-      .send();
+    const signer = factory.getSigner(hexDomain);
+    const status = signer.verifyMultiple(g1, g2, localTestMsg)
+      ? STATUS_CODES_ACCEPTED
+      : STATUS_CODES_NOT_ACCEPTED;
+
+    console.log({ domain: hexDomain, msgs: localTestMsg, pubkeys, aggrSig });
+    res.status(status).send({"signature verification": status == STATUS_CODES_ACCEPTED});
   } catch (e) {
     next(e);
   }
 });
 
-app.use((err:any, req:any, res:any, next:any) => {
-  console.error(err.stack);
-  res.status(STATUS_CODES_INTERNAL_SERVER_ERROR).send({ error: "interal server error: " + err.stack });
+app.post("/aggr/verify", async (req, res, next) => {
+  try {
+    const {
+      domain,
+      messages,
+      pubkeys,
+      aggrSig,
+    }: {
+      domain: string;       // raw domain, e.g. "domain"
+      messages: string[];   // raw message, e.g. ["helloworld", "foobar"]
+      pubkeys: string[4][];
+      aggrSig: string[2];
+    } = req.body;
+
+    const hexDomain = hexToUint8Array(
+      crypto.createHash("sha256").update(domain).digest("hex")
+    );
+
+    const hexMsg = [];
+    for (const raw of messages) {
+      const message = formatBytes32String(raw);
+      const g1Pt = (0, mcl_1.hashToPoint)(message, hexDomain)
+      hexMsg.push((0, mcl_1.g1ToHex)(g1Pt));
+    }
+
+    const localTestMsg = [];
+    for (const raw of messages) {
+      const message = formatBytes32String(raw);
+      localTestMsg.push(message);
+    }
+    const g1 = mcl.loadG1(aggrSig[0] + aggrSig[1].slice(2));
+    const g2: solG2[] = [];
+    for (let i = 0; i < pubkeys.length; i++) {
+      const x = pubkeys[i][0];
+      const y = pubkeys[i][1].slice(2);
+      const z = pubkeys[i][2].slice(2);
+      const w = pubkeys[i][3].slice(2);
+      g2.push(mcl.loadG2(x + y + z + w));
+    }
+    const signer = factory.getSigner(hexDomain);
+    const status = signer.verifyMultiple(g1, g2, localTestMsg)
+      ? STATUS_CODES_ACCEPTED
+      : STATUS_CODES_NOT_ACCEPTED;
+
+    console.log({ domain: hexDomain, msgs: hexMsg, pubkeys, aggrSig });
+
+    const verify = await verifyAggrSigs(aggrSig, pubkeys, hexMsg);
+
+    console.log({ verify });
+    res.status(verify? STATUS_CODES_ACCEPTED: STATUS_CODES_NOT_ACCEPTED).send({"signature verification": verify});
+  } catch (e) {
+    next(e);
+  }
 });
 
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error(err.stack);
+  res
+    .status(STATUS_CODES_INTERNAL_SERVER_ERROR)
+    .send({ error: "interal server error: " + err.stack });
+});
 
 app.listen(port, async () => {
   factory = await BlsSignerFactory.new();
