@@ -7,7 +7,7 @@ import { BlsSignerFactory } from "@thehubbleproject/bls/dist/signer";
 import { formatBytes32String } from "ethers/lib/utils";
 import crypto from "crypto";
 import { hexToUint8Array } from "./service/utils";
-import { verifyAggrSigs } from "./service/chain.util";
+import { callContractFunction, verifyAggrSigs } from "./service/chain.util";
 
 const mcl_1 = require("@thehubbleproject/bls/dist/mcl");
 
@@ -116,6 +116,8 @@ app.post("/aggr/verify/offchain", async (req, res, next) => {
 });
 
 app.post("/aggr/verify", async (req, res, next) => {
+
+  console.log(await callContractFunction())
   try {
     const {
       domain,
@@ -139,25 +141,6 @@ app.post("/aggr/verify", async (req, res, next) => {
       const g1Pt = (0, mcl_1.hashToPoint)(message, hexDomain)
       hexMsg.push((0, mcl_1.g1ToHex)(g1Pt));
     }
-
-    const localTestMsg = [];
-    for (const raw of messages) {
-      const message = formatBytes32String(raw);
-      localTestMsg.push(message);
-    }
-    const g1 = mcl.loadG1(aggrSig[0] + aggrSig[1].slice(2));
-    const g2: solG2[] = [];
-    for (let i = 0; i < pubkeys.length; i++) {
-      const x = pubkeys[i][0];
-      const y = pubkeys[i][1].slice(2);
-      const z = pubkeys[i][2].slice(2);
-      const w = pubkeys[i][3].slice(2);
-      g2.push(mcl.loadG2(x + y + z + w));
-    }
-    const signer = factory.getSigner(hexDomain);
-    const status = signer.verifyMultiple(g1, g2, localTestMsg)
-      ? STATUS_CODES_ACCEPTED
-      : STATUS_CODES_NOT_ACCEPTED;
 
     console.log({ domain: hexDomain, msgs: hexMsg, pubkeys, aggrSig });
 
