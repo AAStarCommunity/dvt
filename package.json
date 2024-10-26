@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@thehubbleproject/bls": "^0.5.1",
+    "dotenv": "^16.4.5",
     "express": "^4.21.1"
   },
   "devDependencies": {
