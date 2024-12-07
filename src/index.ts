@@ -8,6 +8,7 @@ import { formatBytes32String } from "ethers/lib/utils";
 import crypto from "crypto";
 import { hexToUint8Array } from "./service/utils";
 import { callContractFunction, verifyAggrSigs } from "./service/chain.util";
+import { AuthenticationResponseJSON } from "@simplewebauthn/types";
 
 const mcl_1 = require("@thehubbleproject/bls/dist/mcl");
 
@@ -20,14 +21,17 @@ let factory: BlsSignerFactory;
 const port = process.env.PORT || 80;
 
 app.use(express.json());
+
 app.post("/sign", async (req, res, next) => {
   try {
-    const { domain, message }: { domain: string; message: string } = req.body;
+    const { domain, message, passkeyPubkey, passkey }: { domain: string; message: string; passkeyPubkey: string; passkey:AuthenticationResponseJSON } = req.body;
 
-    if (!domain || !message) {
+    if (!domain || !message || !passkeyPubkey || passkey === undefined) {
       res.status(400).send({ error: "Invalid input" });
       return;
     }
+
+    // TODO: verify passkey by @simplewebauthn
 
     const hashedDomain = crypto
       .createHash("sha256")
