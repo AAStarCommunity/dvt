@@ -4,11 +4,12 @@ import { aggregator } from "./service/aggregator";
 import { solG1, solG2 } from "@thehubbleproject/bls/dist/mcl";
 import { mcl } from "@thehubbleproject/bls";
 import { BlsSignerFactory } from "@thehubbleproject/bls/dist/signer";
-import { formatBytes32String } from "ethers/lib/utils";
+import { arrayify, formatBytes32String } from "ethers/lib/utils";
 import crypto from "crypto";
 import { hexToUint8Array } from "./service/utils";
 import { callContractFunction, verifyAggrSigs } from "./service/chain.util";
 import { AuthenticationResponseJSON } from "@simplewebauthn/types";
+import { getConfig } from './config';
 
 const mcl_1 = require("@thehubbleproject/bls/dist/mcl");
 
@@ -18,27 +19,24 @@ const STATUS_CODES_INTERNAL_SERVER_ERROR = 500;
 
 const app = express();
 let factory: BlsSignerFactory;
-const port = process.env.PORT || 80;
+const config = getConfig();
+const port = config.port;
+const domain = new Uint8Array([config.domain])
 
 app.use(express.json());
 
 app.post("/sign", async (req, res, next) => {
   try {
-    const { domain, message, passkeyPubkey, passkey }: { domain: string; message: string; passkeyPubkey: string; passkey:AuthenticationResponseJSON } = req.body;
+    const { message, passkeyPubkey, passkey }: { message: string; passkeyPubkey: string; passkey: AuthenticationResponseJSON } = req.body;
 
-    if (!domain || !message || !passkeyPubkey || passkey === undefined) {
+    if (!message || !passkeyPubkey || passkey === undefined) {
       res.status(400).send({ error: "Invalid input" });
       return;
     }
 
     // TODO: verify passkey by @simplewebauthn
 
-    const hashedDomain = crypto
-      .createHash("sha256")
-      .update(domain)
-      .digest("hex");
-
-    const s = await blsSign(hashedDomain, message);
+    const s = await blsSign(message);
 
     res.send(JSON.stringify({ sig: s.signature, pubkeys: s.pubkey }));
   } catch (e) {
@@ -113,7 +111,7 @@ app.post("/aggr/verify/offchain", async (req, res, next) => {
       : STATUS_CODES_NOT_ACCEPTED;
 
     console.log({ domain: hexDomain, msgs: localTestMsg, pubkeys, aggrSig });
-    res.status(status).send({"signature verification": status == STATUS_CODES_ACCEPTED});
+    res.status(status).send({ "signature verification": status == STATUS_CODES_ACCEPTED });
   } catch (e) {
     next(e);
   }
@@ -151,7 +149,7 @@ app.post("/aggr/verify", async (req, res, next) => {
     const verify = await verifyAggrSigs(aggrSig, pubkeys, hexMsg);
 
     console.log({ verify });
-    res.status(verify? STATUS_CODES_ACCEPTED: STATUS_CODES_NOT_ACCEPTED).send({"signature verification": verify});
+    res.status(verify ? STATUS_CODES_ACCEPTED : STATUS_CODES_NOT_ACCEPTED).send({ "signature verification": verify });
   } catch (e) {
     next(e);
   }
