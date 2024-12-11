@@ -4,9 +4,8 @@ import { aggregator } from "./service/aggregator";
 import { solG1, solG2 } from "@thehubbleproject/bls/dist/mcl";
 import { mcl } from "@thehubbleproject/bls";
 import { BlsSignerFactory } from "@thehubbleproject/bls/dist/signer";
-import { arrayify, formatBytes32String } from "ethers/lib/utils";
+import { formatBytes32String, sha256 } from "ethers/lib/utils";
 import crypto from "crypto";
-import { hexToUint8Array } from "./service/utils";
 import { callContractFunction, verifyAggrSigs } from "./service/chain.util";
 import { AuthenticationResponseJSON } from "@simplewebauthn/types";
 import { getConfig } from './config';
@@ -21,9 +20,19 @@ const app = express();
 let factory: BlsSignerFactory;
 const config = getConfig();
 const port = config.port;
-const domain = new Uint8Array([config.domain])
+const dvtDomain = new Uint8Array([config.domain])
+const dvtSecret = '0x' + crypto.createHash('sha256')
+    .update(config.dvtSecret)
+    .digest('hex');
 
 app.use(express.json());
+
+const hashMessage = (message: string): string => {
+  return crypto.createHash('sha256')
+    .update(message)
+    .digest('hex')
+    .substring(0, 30);
+};
 
 app.post("/sign", async (req, res, next) => {
   try {
@@ -36,9 +45,9 @@ app.post("/sign", async (req, res, next) => {
 
     // TODO: verify passkey by @simplewebauthn
 
-    const s = await blsSign(message);
+    const s = await blsSign(hashMessage(message));
 
-    res.send(JSON.stringify({ sig: s.signature, pubkeys: s.pubkey }));
+    res.send(JSON.stringify({ sig: s.signature, pubkeys: s.pubkey, msg: s.msgPoints }));
   } catch (e) {
     next(e);
   }
@@ -76,24 +85,18 @@ app.post("/aggr", async (req, res, next) => {
 app.post("/aggr/verify/offchain", async (req, res, next) => {
   try {
     const {
-      domain,
       messages,
       pubkeys,
       aggrSig,
     }: {
-      domain: string;       // raw domain, e.g. "domain"
       messages: string[];   // raw message, e.g. ["helloworld", "foobar"]
       pubkeys: string[4][];
       aggrSig: string[2];
     } = req.body;
 
-    const hexDomain = hexToUint8Array(
-      crypto.createHash("sha256").update(domain).digest("hex")
-    );
-
     const localTestMsg = [];
     for (const raw of messages) {
-      const message = formatBytes32String(raw);
+      const message = formatBytes32String(hashMessage(raw));
       localTestMsg.push(message);
     }
     const g1 = mcl.loadG1(aggrSig[0] + aggrSig[1].slice(2));
@@ -105,12 +108,12 @@ app.post("/aggr/verify/offchain", async (req, res, next) => {
       const w = pubkeys[i][3].slice(2);
       g2.push(mcl.loadG2(x + y + z + w));
     }
-    const signer = factory.getSigner(hexDomain);
+    const signer = factory.getSigner(dvtDomain, dvtSecret);
     const status = signer.verifyMultiple(g1, g2, localTestMsg)
       ? STATUS_CODES_ACCEPTED
       : STATUS_CODES_NOT_ACCEPTED;
 
-    console.log({ domain: hexDomain, msgs: localTestMsg, pubkeys, aggrSig });
+    console.log({ domain: dvtDomain, msgs: localTestMsg, pubkeys, aggrSig });
     res.status(status).send({ "signature verification": status == STATUS_CODES_ACCEPTED });
   } catch (e) {
     next(e);
@@ -122,29 +125,23 @@ app.post("/aggr/verify", async (req, res, next) => {
   console.log(await callContractFunction())
   try {
     const {
-      domain,
       messages,
       pubkeys,
       aggrSig,
     }: {
-      domain: string;       // raw domain, e.g. "domain"
       messages: string[];   // raw message, e.g. ["helloworld", "foobar"]
       pubkeys: string[4][];
       aggrSig: string[2];
     } = req.body;
 
-    const hexDomain = hexToUint8Array(
-      crypto.createHash("sha256").update(domain).digest("hex")
-    );
-
     const hexMsg = [];
     for (const raw of messages) {
-      const message = formatBytes32String(raw);
-      const g1Pt = (0, mcl_1.hashToPoint)(message, hexDomain)
+      const message = formatBytes32String(hashMessage(raw));
+      const g1Pt = (0, mcl_1.hashToPoint)(message, dvtDomain)
       hexMsg.push((0, mcl_1.g1ToHex)(g1Pt));
     }
 
-    console.log({ domain: hexDomain, msgs: hexMsg, pubkeys, aggrSig });
+    console.log({ domain: dvtDomain, msgs: hexMsg, pubkeys, aggrSig });
 
     const verify = await verifyAggrSigs(aggrSig, pubkeys, hexMsg);
 
