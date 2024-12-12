@@ -24,14 +24,3 @@ export async function verifyAggrSigs(signature: string[2], pubkeys: string[4][],
     const result = await contract.validateAggregatorSignature(signature, pubkeys, messages);
     return result;
 }
-
-
-export async function callContractFunction() {
-    try {
-      // 调用合约的一个函数
-      const result = await contract.getMessage();
-      console.log("合约调用结果:", result);
-    } catch (error) {
-      console.error("合约调用失败:", error);
-    }
-  }

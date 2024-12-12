@@ -6,7 +6,7 @@ import { mcl } from "@thehubbleproject/bls";
 import { BlsSignerFactory } from "@thehubbleproject/bls/dist/signer";
 import { formatBytes32String, sha256 } from "ethers/lib/utils";
 import crypto from "crypto";
-import { callContractFunction, verifyAggrSigs } from "./service/chain.util";
+import { verifyAggrSigs } from "./service/chain.util";
 import { AuthenticationResponseJSON } from "@simplewebauthn/types";
 import { getConfig } from './config';
 
@@ -122,7 +122,6 @@ app.post("/aggr/verify/offchain", async (req, res, next) => {
 
 app.post("/aggr/verify", async (req, res, next) => {
 
-  console.log(await callContractFunction())
   try {
     const {
       messages,

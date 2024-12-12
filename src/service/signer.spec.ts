@@ -1,7 +1,6 @@
 import { describe, it } from '@jest/globals';
 import { BlsSignerFactory } from '@thehubbleproject/bls/dist/signer';
-import exp from 'constants';
-import { arrayify, formatBytes32String, keccak256 } from "ethers/lib/utils";
+import { formatBytes32String, keccak256 } from "ethers/lib/utils";
 
 describe('Signer Service', () => {
     describe('blsSign', () => {
