@@ -1,9 +1,8 @@
 import express from "express";
 import { blsSign } from "./service/signer";
-import { aggregator } from "./service/aggregator";
 import { solG1, solG2 } from "@thehubbleproject/bls/dist/mcl";
 import { mcl } from "@thehubbleproject/bls";
-import { BlsSignerFactory } from "@thehubbleproject/bls/dist/signer";
+import { aggregate, BlsSignerFactory } from "@thehubbleproject/bls/dist/signer";
 import { formatBytes32String, sha256 } from "ethers/lib/utils";
 import crypto from "crypto";
 import { AuthenticationResponseJSON } from "@simplewebauthn/types";
@@ -21,16 +20,16 @@ const config = getConfig();
 const port = config.port;
 const dvtDomain = new Uint8Array([config.domain])
 const dvtSecret = '0x' + crypto.createHash('sha256')
-    .update(config.dvtSecret)
-    .digest('hex');
+  .update(config.dvtSecret)
+  .digest('hex');
 
 app.use(express.json());
 
 const hashMessage = (message: string): string => {
-  return crypto.createHash('sha256')
+  return formatBytes32String(crypto.createHash('sha256')
     .update(message)
     .digest('hex')
-    .substring(0, 30);
+    .substring(0, 30));
 };
 
 app.post("/sign", async (req, res, next) => {
@@ -41,6 +40,8 @@ app.post("/sign", async (req, res, next) => {
       res.status(400).send({ error: "Invalid input" });
       return;
     }
+
+    console.log({message})
 
     // TODO: verify passkey by @simplewebauthn
 
@@ -55,6 +56,7 @@ app.post("/sign", async (req, res, next) => {
 app.post("/aggr", async (req, res, next) => {
   try {
     const { sigs }: { sigs: string[2][] } = req.body;
+    console.log({ sigs });
     const aggrs: solG1[] = [];
     for (let i = 0; i < sigs.length; i++) {
       let x = sigs[i][0];
@@ -75,7 +77,7 @@ app.post("/aggr", async (req, res, next) => {
       }
       aggrs.push(mcl.loadG1(x + y));
     }
-    res.send(JSON.stringify({ sig: aggregator(aggrs) }));
+    res.send(JSON.stringify({ sig: aggregate(aggrs) }));
   } catch (e) {
     next(e);
   }
@@ -84,19 +86,19 @@ app.post("/aggr", async (req, res, next) => {
 app.post("/aggr/verify/offchain", async (req, res, next) => {
   try {
     const {
-      messages,
+      message,
       pubkeys,
       aggrSig,
     }: {
-      messages: string[];   // raw message, e.g. ["helloworld", "foobar"]
+      message: string;   // raw message
       pubkeys: string[4][];
       aggrSig: string[2];
     } = req.body;
 
-    const localTestMsg = [];
-    for (const raw of messages) {
-      const message = formatBytes32String(hashMessage(raw));
-      localTestMsg.push(message);
+    const messages: string[] = [];
+    const hm = hashMessage(message);
+    for (let i=0; i<pubkeys.length; i++) {
+      messages.push(hm);
     }
     const g1 = mcl.loadG1(aggrSig[0] + aggrSig[1].slice(2));
     const g2: solG2[] = [];
@@ -108,11 +110,11 @@ app.post("/aggr/verify/offchain", async (req, res, next) => {
       g2.push(mcl.loadG2(x + y + z + w));
     }
     const signer = factory.getSigner(dvtDomain, dvtSecret);
-    const status = signer.verifyMultiple(g1, g2, localTestMsg)
+    const status = signer.verifyMultiple(g1, g2, messages)
       ? STATUS_CODES_ACCEPTED
       : STATUS_CODES_NOT_ACCEPTED;
 
-    console.log({ domain: dvtDomain, msgs: localTestMsg, pubkeys, aggrSig });
+    console.log({ domain: dvtDomain, msgs: messages, pubkeys, aggrSig });
     res.status(status).send({ "signature verification": status == STATUS_CODES_ACCEPTED });
   } catch (e) {
     next(e);
