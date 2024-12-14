@@ -6,22 +6,18 @@ dotenv.config({
 
 interface Config {
   port: number;
-  rpcUrl: string;
-  contractAddress: string;
   domain: number;
   dvtSecret: string;
 }
 
 const config: Config = {
   port: Number(process.env.PORT) || 80,
-  rpcUrl: process.env.RPC || '',
-  contractAddress: process.env.ADD || '',
   domain: Number(process.env.DOMAIN) || 0,
   dvtSecret: process.env.DVT_SECRET || '',
 };
 
 const validateConfig = () => {
-  const requiredFields: (keyof Config)[] = ['rpcUrl', 'contractAddress', 'dvtSecret'];
+  const requiredFields: (keyof Config)[] = ['dvtSecret'];
   for (const field of requiredFields) {
     if (!config[field]) {
       throw new Error(`Missing required configuration: ${field}`);

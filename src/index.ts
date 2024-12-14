@@ -6,7 +6,6 @@ import { mcl } from "@thehubbleproject/bls";
 import { BlsSignerFactory } from "@thehubbleproject/bls/dist/signer";
 import { formatBytes32String, sha256 } from "ethers/lib/utils";
 import crypto from "crypto";
-import { verifyAggrSigs } from "./service/chain.util";
 import { AuthenticationResponseJSON } from "@simplewebauthn/types";
 import { getConfig } from './config';
 
@@ -115,37 +114,6 @@ app.post("/aggr/verify/offchain", async (req, res, next) => {
 
     console.log({ domain: dvtDomain, msgs: localTestMsg, pubkeys, aggrSig });
     res.status(status).send({ "signature verification": status == STATUS_CODES_ACCEPTED });
-  } catch (e) {
-    next(e);
-  }
-});
-
-app.post("/aggr/verify", async (req, res, next) => {
-
-  try {
-    const {
-      messages,
-      pubkeys,
-      aggrSig,
-    }: {
-      messages: string[];   // raw message, e.g. ["helloworld", "foobar"]
-      pubkeys: string[4][];
-      aggrSig: string[2];
-    } = req.body;
-
-    const hexMsg = [];
-    for (const raw of messages) {
-      const message = formatBytes32String(hashMessage(raw));
-      const g1Pt = (0, mcl_1.hashToPoint)(message, dvtDomain)
-      hexMsg.push((0, mcl_1.g1ToHex)(g1Pt));
-    }
-
-    console.log({ domain: dvtDomain, msgs: hexMsg, pubkeys, aggrSig });
-
-    const verify = await verifyAggrSigs(aggrSig, pubkeys, hexMsg);
-
-    console.log({ verify });
-    res.status(verify ? STATUS_CODES_ACCEPTED : STATUS_CODES_NOT_ACCEPTED).send({ "signature verification": verify });
   } catch (e) {
     next(e);
   }
