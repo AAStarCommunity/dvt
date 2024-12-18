@@ -1,6 +1,6 @@
 import { describe, it } from '@jest/globals';
 import { BlsSignerFactory } from '@thehubbleproject/bls/dist/signer';
-import { formatBytes32String, keccak256 } from "ethers/lib/utils";
+import {encodeBytes32String} from "ethers"
 
 describe('Signer Service', () => {
     describe('blsSign', () => {
@@ -34,7 +34,7 @@ describe('Signer Service', () => {
             const signer = factory.getSigner(DOMAIN, "0xabcd");
             const signer2 = (await BlsSignerFactory.new()).getSigner(DOMAIN, "0xabcd");
 
-            const message = formatBytes32String("0x1234")
+            const message = encodeBytes32String("0x1234")
             const signature = signer.sign(message);
             const result = signer2.verify(signature, signer.pubkey, message);
 

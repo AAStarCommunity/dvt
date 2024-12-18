@@ -1,9 +1,9 @@
 import express from "express";
-import { blsSign } from "./service/signer";
+import { blsSign, createSignature } from "./service/signer";
 import { solG1, solG2 } from "@thehubbleproject/bls/dist/mcl";
 import { mcl } from "@thehubbleproject/bls";
 import { aggregate, BlsSignerFactory } from "@thehubbleproject/bls/dist/signer";
-import { formatBytes32String, sha256 } from "ethers/lib/utils";
+import { encodeBytes32String } from "ethers";
 import crypto from "crypto";
 import { AuthenticationResponseJSON } from "@simplewebauthn/types";
 import { getConfig } from './config';
@@ -26,7 +26,7 @@ const dvtSecret = '0x' + crypto.createHash('sha256')
 app.use(express.json());
 
 const hashMessage = (message: string): string => {
-  return formatBytes32String(crypto.createHash('sha256')
+  return encodeBytes32String(crypto.createHash('sha256')
     .update(message)
     .digest('hex')
     .substring(0, 30));
@@ -55,8 +55,8 @@ app.post("/sign", async (req, res, next) => {
 
 app.post("/aggr", async (req, res, next) => {
   try {
-    const { sigs }: { sigs: string[2][] } = req.body;
-    console.log({ sigs });
+    const { eoa, sigs }: { eoa: string; sigs: string[2][] } = req.body;
+    console.log({ eoa, sigs });
     const aggrs: solG1[] = [];
     for (let i = 0; i < sigs.length; i++) {
       let x = sigs[i][0];
@@ -77,7 +77,10 @@ app.post("/aggr", async (req, res, next) => {
       }
       aggrs.push(mcl.loadG1(x + y));
     }
-    res.send(JSON.stringify({ sig: aggregate(aggrs) }));
+
+    const aggr = aggregate(aggrs);
+    const sig = createSignature(eoa, aggr);
+    res.send(JSON.stringify({ sig }));
   } catch (e) {
     next(e);
   }
