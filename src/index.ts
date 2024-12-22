@@ -1,10 +1,10 @@
 import express from "express";
-import { blsSign, createSignature } from "./service/signer";
+import { aggregateSignature, AggregationPayload, blsSign, convertPayloadToG2Points, convertSOlG1ProjectPointType, createSignature, extractSignaturesFromPayload, getAggSignatureCalldata } from "./service";
 import { solG1, solG2 } from "@thehubbleproject/bls/dist/mcl";
 import { mcl } from "@thehubbleproject/bls";
 import { aggregate, BlsSignerFactory } from "@thehubbleproject/bls/dist/signer";
 import { encodeBytes32String } from "ethers";
-import crypto from "crypto";
+import crypto, { Hmac } from "crypto";
 import { AuthenticationResponseJSON } from "@simplewebauthn/types";
 import { getConfig } from './config';
 
@@ -41,7 +41,7 @@ app.post("/sign", async (req, res, next) => {
       return;
     }
 
-    console.log({message})
+    console.log({ message })
 
     // TODO: verify passkey by @simplewebauthn
 
@@ -55,32 +55,19 @@ app.post("/sign", async (req, res, next) => {
 
 app.post("/aggr", async (req, res, next) => {
   try {
-    const { eoa, sigs }: { eoa: string; sigs: string[2][] } = req.body;
+    const { msg, eoa, sigs }: { msg: solG1, eoa: string; sigs: AggregationPayload } = req.body;
     console.log({ eoa, sigs });
-    const aggrs: solG1[] = [];
-    for (let i = 0; i < sigs.length; i++) {
-      let x = sigs[i][0];
-      let y = sigs[i][1];
-      if (!x || !y) {
-        res.status(400).send({ error: "Invalid input" });
-        return;
-      }
-      if (!x.startsWith("0x")) {
-        x = "0x" + x;
-      }
-      if (y.startsWith("0x")) {
-        y = y.slice(2);
-      }
-      if (x.length !== 66 || y.length !== 64) {
-        res.status(400).send({ error: "Invalid input" });
-        return;
-      }
-      aggrs.push(mcl.loadG1(x + y));
-    }
+    const aggrs = extractSignaturesFromPayload(sigs);
+    const aggr = aggregateSignature(aggrs);
+    const g2Points = convertPayloadToG2Points(sigs);
+    const hm = convertSOlG1ProjectPointType(msg)
+    const blsSig = getAggSignatureCalldata(
+      aggr,
+      g2Points,
+      hm
+    );
 
-    const aggr = aggregate(aggrs);
-    
-    const sig = createSignature(eoa, aggr);
+    const sig = createSignature(eoa, blsSig);
     res.send(JSON.stringify({ sig }));
   } catch (e) {
     next(e);
@@ -101,7 +88,7 @@ app.post("/aggr/verify/offchain", async (req, res, next) => {
 
     const messages: string[] = [];
     const hm = hashMessage(message);
-    for (let i=0; i<pubkeys.length; i++) {
+    for (let i = 0; i < pubkeys.length; i++) {
       messages.push(hm);
     }
     const g1 = mcl.loadG1(aggrSig[0] + aggrSig[1].slice(2));

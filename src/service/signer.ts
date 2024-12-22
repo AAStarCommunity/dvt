@@ -3,10 +3,12 @@ import { getConfig } from '../config';
 import crypto from "crypto";
 import { g1ToHex, hashToPoint, solG1 } from "@thehubbleproject/bls/dist/mcl";
 import { ethers } from "ethers";
-import { concatBytes, numberToBytesBE } from "@noble/curves/abstract/utils";
+import { concatBytes } from "@noble/curves/abstract/utils";
 import { bn254 } from '@kevincharm/noble-bn254-drand'
 import type { ProjPointType } from "@noble/curves/abstract/weierstrass";
 import type { Fp2 } from "@noble/curves/abstract/tower";
+import { convertSolG1ToSigPoint, getBigIntPoint, getFp2Point } from ".";
+import { parseSigPoint } from ".";
 
 const config = getConfig();
 const signerDomain = new Uint8Array([config.domain]);
@@ -26,11 +28,11 @@ export async function blsSign(message: string): Promise<any> {
 
 export function createSignature(
   eoaSignature: string,
-  blsSignature: solG1
+  blsSignature: Uint8Array
 ): string {
   const abiCoder = new ethers.AbiCoder();
   const encodedSignatures = abiCoder.encode(
-    ['bytes', '(bytes32,bytes32)'],
+    ['bytes', 'bytes'],
     [eoaSignature, blsSignature]
   );
 
@@ -40,21 +42,9 @@ export function createSignature(
   ]);
 }
 
-
-const getBigIntPoint = (point: ProjPointType<bigint>) => {
-  return concatBytes(
-      numberToBytesBE(point.x, 32),
-      numberToBytesBE(point.y, 32),
-  )
-}
-
-const getFp2Point = (point: ProjPointType<Fp2>) => {
-  return concatBytes(
-      numberToBytesBE(point.x.c1, 32),
-      numberToBytesBE(point.x.c0, 32),
-      numberToBytesBE(point.y.c1, 32),
-      numberToBytesBE(point.y.c0, 32),
-  )
+export const getAggSignature = (signatures: ProjPointType<bigint>[]) => {
+  const aggSignature = signatures.reduce((sum, s) => sum.add(s), bn254.G1.ProjectivePoint.ZERO);
+  return aggSignature;
 }
 
 export const getAggSignatureCalldata = (
@@ -67,4 +57,10 @@ export const getAggSignatureCalldata = (
       calldata = concatBytes(calldata, getBigIntPoint(Hm), getFp2Point(publicPoints[i].negate()));
   }
   return calldata
+}
+
+export const aggregateSignature = (signatures: solG1[]) => {
+  const sigs = convertSolG1ToSigPoint(signatures);
+  const projPointSignatures = sigs.map(parseSigPoint);
+  return getAggSignature(projPointSignatures);
 }
