@@ -79,6 +79,7 @@ app.post("/aggr", async (req, res, next) => {
     }
 
     const aggr = aggregate(aggrs);
+    
     const sig = createSignature(eoa, aggr);
     res.send(JSON.stringify({ sig }));
   } catch (e) {
