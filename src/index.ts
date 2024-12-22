@@ -55,12 +55,12 @@ app.post("/sign", async (req, res, next) => {
 
 app.post("/aggr", async (req, res, next) => {
   try {
-    const { msg, eoa, sigs }: { msg: solG1, eoa: string; sigs: AggregationPayload } = req.body;
-    console.log({ eoa, sigs });
-    const aggrs = extractSignaturesFromPayload(sigs);
-    const aggr = aggregateSignature(aggrs);
+    const { msg, eoa, sigs }: { msg: solG1, eoa: string; sigs: any[] } = req.body;
+    console.log({ msg, eoa, sigs });
     const g2Points = convertPayloadToG2Points(sigs);
     const hm = convertSOlG1ProjectPointType(msg)
+    const aggrs = extractSignaturesFromPayload(sigs);
+    const aggr = aggregateSignature(aggrs);
     const blsSig = getAggSignatureCalldata(
       aggr,
       g2Points,

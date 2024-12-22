@@ -83,12 +83,12 @@ export const convertSolG1ToSigPoint = (solG1Points: solG1[]): SigPoint[] => {
   }));
 }
 
-export const extractSignaturesFromPayload = (payload: AggregationPayload): solG1[] => {
-  return payload.sigs.map(sig => sig.sig as solG1);
+export const extractSignaturesFromPayload = (payload: any[]): solG1[] => {
+  return payload.map(sig => sig.sig as solG1);
 }
 
-export const extractPublicPointsFromPayload = (payload: AggregationPayload): PublicPoint[] => {
-  return payload.sigs.map(sig => {
+export const extractPublicPointsFromPayload = (payload: any[]): PublicPoint[] => {
+  return payload.map(sig => {
     const pub = sig.pub;
     if (pub.length !== 4) {
       throw new Error('Invalid public point format: expected 4 strings');
@@ -121,7 +121,7 @@ export const convertPublicPointToG2Point = (publicPoint: PublicPoint): ProjPoint
   return bn254.G2.ProjectivePoint.fromAffine({ x, y });
 }
 
-export const convertPayloadToG2Points = (payload: AggregationPayload): ProjPointType<Fp2>[] => {
+export const convertPayloadToG2Points = (payload: any[]): ProjPointType<Fp2>[] => {
   const publicPoints = extractPublicPointsFromPayload(payload);
   return publicPoints.map(convertPublicPointToG2Point);
 }
