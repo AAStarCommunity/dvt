@@ -1,36 +1,19 @@
 import express from "express";
-import { aggregateSignature, AggregationPayload, blsSign, convertPayloadToG2Points, convertSOlG1ProjectPointType, createSignature, extractSignaturesFromPayload, getAggSignatureCalldata } from "./service";
-import { solG1, solG2 } from "@thehubbleproject/bls/dist/mcl";
-import { mcl } from "@thehubbleproject/bls";
-import { aggregate, BlsSignerFactory } from "@thehubbleproject/bls/dist/signer";
-import { encodeBytes32String } from "ethers";
-import crypto, { Hmac } from "crypto";
+import { getAggSignature, blsSignature, getHm, getSignaturePoint, createSignature } from "./service";
 import { AuthenticationResponseJSON } from "@simplewebauthn/types";
 import { getConfig } from './config';
-
-const mcl_1 = require("@thehubbleproject/bls/dist/mcl");
+import { hexToBytes } from "@noble/curves/abstract/utils";
+import { bn254 } from "@kevincharm/noble-bn254-drand";
 
 const STATUS_CODES_ACCEPTED = 202;
 const STATUS_CODES_NOT_ACCEPTED = 406;
 const STATUS_CODES_INTERNAL_SERVER_ERROR = 500;
 
 const app = express();
-let factory: BlsSignerFactory;
 const config = getConfig();
 const port = config.port;
-const dvtDomain = new Uint8Array([config.domain])
-const dvtSecret = '0x' + crypto.createHash('sha256')
-  .update(config.dvtSecret)
-  .digest('hex');
 
 app.use(express.json());
-
-const hashMessage = (message: string): string => {
-  return encodeBytes32String(crypto.createHash('sha256')
-    .update(message)
-    .digest('hex')
-    .substring(0, 30));
-};
 
 app.post("/sign", async (req, res, next) => {
   try {
@@ -45,9 +28,25 @@ app.post("/sign", async (req, res, next) => {
 
     // TODO: verify passkey by @simplewebauthn
 
-    const s = await blsSign(hashMessage(message));
-
-    res.send(JSON.stringify({ sig: s.signature, pubkeys: s.pubkey, msg: s.msgPoints }));
+    const messageBigInt = BigInt(`0x${message.replace(/^0x/, '')}`);
+    const hm = getHm(messageBigInt);
+    const privateKey = hexToBytes(config.dvtSecret);
+    const { sigPoint, publicPoint } = getSignaturePoint(privateKey, hm);
+    res.send(JSON.stringify({
+      sig: {
+        px: sigPoint.x.toString(),
+        py: sigPoint.y.toString(),
+      }, pubkeys: {
+        px: {
+          c0: publicPoint.px.c0.toString(),
+          c1: publicPoint.px.c1.toString(),
+        },
+        py: {
+          c0: publicPoint.py.c0.toString(),
+          c1: publicPoint.py.c1.toString(),
+        }
+      }
+    }));
   } catch (e) {
     next(e);
   }
@@ -55,58 +54,37 @@ app.post("/sign", async (req, res, next) => {
 
 app.post("/aggr", async (req, res, next) => {
   try {
-    const { msg, eoa, sigs }: { msg: solG1, eoa: string; sigs: any[] } = req.body;
-    console.log({ msg, eoa, sigs });
-    const g2Points = convertPayloadToG2Points(sigs);
-    const hm = convertSOlG1ProjectPointType(msg)
-    const aggrs = extractSignaturesFromPayload(sigs);
-    const aggr = aggregateSignature(aggrs);
-    const blsSig = getAggSignatureCalldata(
-      aggr,
-      g2Points,
-      hm
-    );
-
-    const sig = createSignature(eoa, blsSig);
-    res.send(JSON.stringify({ sig }));
-  } catch (e) {
-    next(e);
-  }
-});
-
-app.post("/aggr/verify/offchain", async (req, res, next) => {
-  try {
-    const {
-      message,
-      pubkeys,
-      aggrSig,
-    }: {
-      message: string;   // raw message
-      pubkeys: string[4][];
-      aggrSig: string[2];
+    const { sigs, eoa, msg }: {
+      sigs: Array<{
+        sig: { px: string, py: string },
+        pub: {
+          px: { c0: string, c1: string },
+          py: { c0: string, c1: string }
+        }
+      }>,
+      eoa: string,
+      msg: string
     } = req.body;
 
-    const messages: string[] = [];
-    const hm = hashMessage(message);
-    for (let i = 0; i < pubkeys.length; i++) {
-      messages.push(hm);
-    }
-    const g1 = mcl.loadG1(aggrSig[0] + aggrSig[1].slice(2));
-    const g2: solG2[] = [];
-    for (let i = 0; i < pubkeys.length; i++) {
-      const x = pubkeys[i][0];
-      const y = pubkeys[i][1].slice(2);
-      const z = pubkeys[i][2].slice(2);
-      const w = pubkeys[i][3].slice(2);
-      g2.push(mcl.loadG2(x + y + z + w));
-    }
-    const signer = factory.getSigner(dvtDomain, dvtSecret);
-    const status = signer.verifyMultiple(g1, g2, messages)
-      ? STATUS_CODES_ACCEPTED
-      : STATUS_CODES_NOT_ACCEPTED;
+    const messageBigInt = BigInt(`0x${msg.replace(/^0x/, '')}`);
+    const hm = getHm(messageBigInt);
 
-    console.log({ domain: dvtDomain, msgs: messages, pubkeys, aggrSig });
-    res.status(status).send({ "signature verification": status == STATUS_CODES_ACCEPTED });
+    const { Fp2 } = bn254.fields;
+    const pts = sigs.map(sig => ({
+      sigPoint: bn254.G1.ProjectivePoint.fromAffine({
+        x: BigInt(sig.sig.px),
+        y: BigInt(sig.sig.py)
+      }),
+      publicPoint: bn254.G2.ProjectivePoint.fromAffine({
+        x: Fp2.fromBigTuple([BigInt(sig.pub.px.c0), BigInt(sig.pub.px.c1)]),
+        y: Fp2.fromBigTuple([BigInt(sig.pub.py.c0), BigInt(sig.pub.py.c1)])
+      })
+    }));
+
+    const aggSignature = getAggSignature(pts.map(pt => pt.sigPoint));
+    const blsSig = blsSignature(aggSignature, pts.map(pt => pt.publicPoint), hm);
+    const sig = createSignature(eoa, blsSig);
+    res.send(JSON.stringify({ sig }));
   } catch (e) {
     next(e);
   }
@@ -120,6 +98,5 @@ app.use((err: any, req: any, res: any, next: any) => {
 });
 
 app.listen(port, async () => {
-  factory = await BlsSignerFactory.new();
   console.log(`Server is running at http://localhost:${port}`);
 });

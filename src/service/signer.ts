@@ -1,35 +1,20 @@
-import { BlsSignerFactory } from "@thehubbleproject/bls/dist/signer";
-import { getConfig } from '../config';
-import crypto from "crypto";
-import { g1ToHex, hashToPoint, solG1 } from "@thehubbleproject/bls/dist/mcl";
 import { ethers } from "ethers";
 import { concatBytes } from "@noble/curves/abstract/utils";
 import { bn254 } from '@kevincharm/noble-bn254-drand'
 import type { ProjPointType } from "@noble/curves/abstract/weierstrass";
 import type { Fp2 } from "@noble/curves/abstract/tower";
-import { convertSolG1ToSigPoint, getBigIntPoint, getFp2Point } from ".";
-import { parseSigPoint } from ".";
+import { getBigIntPoint, getFp2Point } from './utils';
 
-const config = getConfig();
-const signerDomain = new Uint8Array([config.domain]);
-
-export async function blsSign(message: string): Promise<any> {
-  const factory = await BlsSignerFactory.new();
-  const secretKey = '0x' + crypto.createHash('sha256')
-    .update(config.dvtSecret)
-    .digest('hex');
-  const signer = factory.getSigner(signerDomain, secretKey);
-  const signature = signer.sign(message);
-  const msgPoints = g1ToHex(hashToPoint(message, signerDomain));
-  const pubkey = signer.pubkey;
-  console.log({ pubkey, signature, msgPoints })
-  return { pubkey, signature, msgPoints };
+export const getSignaturePoint = (privateKey: Uint8Array, Hm: ProjPointType<bigint>) => {
+  const publicPoint = bn254.G2.ProjectivePoint.fromPrivateKey(privateKey);
+  const sigPoint = Hm.multiply(bn254.G1.normPrivateKeyToScalar(privateKey));
+  return { sigPoint, publicPoint };
 }
 
-export function createSignature(
+export const createSignature = (
   eoaSignature: string,
   blsSignature: Uint8Array
-): string {
+): string => {
   const abiCoder = new ethers.AbiCoder();
   const encodedSignatures = abiCoder.encode(
     ['bytes', 'bytes'],
@@ -47,7 +32,7 @@ export const getAggSignature = (signatures: ProjPointType<bigint>[]) => {
   return aggSignature;
 }
 
-export const getAggSignatureCalldata = (
+export const blsSignature = (
   aggSignature: ProjPointType<bigint>,
   publicPoints: ProjPointType<Fp2>[],
   Hm: ProjPointType<bigint>
@@ -57,10 +42,4 @@ export const getAggSignatureCalldata = (
       calldata = concatBytes(calldata, getBigIntPoint(Hm), getFp2Point(publicPoints[i].negate()));
   }
   return calldata
-}
-
-export const aggregateSignature = (signatures: solG1[]) => {
-  const sigs = convertSolG1ToSigPoint(signatures);
-  const projPointSignatures = sigs.map(parseSigPoint);
-  return getAggSignature(projPointSignatures);
 }
