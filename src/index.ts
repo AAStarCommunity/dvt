@@ -2,7 +2,7 @@ import express from "express";
 import { getAggSignature, blsSignature, getHm, getSignaturePoint, createSignature } from "./service";
 import { AuthenticationResponseJSON } from "@simplewebauthn/types";
 import { getConfig } from './config';
-import { hexToBytes } from "@noble/curves/abstract/utils";
+import { bytesToHex, hexToBytes } from "@noble/curves/abstract/utils";
 import { bn254 } from "@kevincharm/noble-bn254-drand";
 
 const STATUS_CODES_ACCEPTED = 202;
@@ -51,6 +51,25 @@ app.post("/sign", async (req, res, next) => {
     next(e);
   }
 });
+
+app.get("/gen", async (req, res, next) => {
+  const pks: string[] = [];
+  const pubs: string[][] = []
+  for (let i = 0; i < 5; i++) {
+    const privateKey = bn254.utils.randomPrivateKey();
+    const publicPoint = bn254.G2.ProjectivePoint.fromPrivateKey(privateKey);
+
+    const pk = bytesToHex(privateKey);
+    pks.push(pk);
+    console.log({ pk });
+    pubs.push([
+      publicPoint.x.c0.toString(),
+      publicPoint.x.c1.toString(),
+    ])
+  }
+
+  res.send(JSON.stringify({ pks, pubs }));
+})
 
 app.post("/aggr", async (req, res, next) => {
   try {
