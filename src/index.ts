@@ -36,7 +36,8 @@ app.post("/sign", async (req, res, next) => {
       sig: {
         px: sigPoint.x.toString(),
         py: sigPoint.y.toString(),
-      }, pubkeys: {
+      },
+      pub: {
         px: {
           c0: publicPoint.px.c0.toString(),
           c1: publicPoint.px.c1.toString(),
